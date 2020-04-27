@@ -1,0 +1,130 @@
+<style>
+  #box {
+    width: 100px;
+    height: 100px;
+    background: red;
+  }
+</style>
+
+<div id="box"></div>
+
+<script>
+  const $ = (q) => Array.from(document.querySelectorAll(q))
+
+  const on = (el, events) => {
+    for (let name in events) el.addEventListener(name, events[name])
+  }
+
+  const off = (el, events) => {
+    for (let name in events) el.removeEventListener(name, events[name])
+  }
+
+  const $box = $('#box')[0]
+
+  const preventDefaults = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  ;['dragenter', 'dragover', 'dragleave', 'drop'].forEach((eventName) => {
+    $box.addEventListener(eventName, preventDefaults, false)
+  })
+
+  const dragenter = (e) => {
+    $box.style.background = 'blue'
+  }
+
+  const dragleave = (e) => {
+    $box.style.background = 'red'
+  }
+
+  async function asyncForEach(array, callback) {
+    for (let index = 0; index < array.length; index++) {
+      await callback(array[index], index, array)
+    }
+  }
+
+  const asyncMap = async (arr, cb) =>
+    Promise.all(arr.map(async (a, i) => await cb(a, i)))
+
+  const readEntries = (dir) =>
+    new Promise((resolve, reject) =>
+      dir.createReader().readEntries(resolve, reject)
+    )
+
+  const getFileEntriesDeep = (dir) => {
+    async function runRecursively(dir, allEntries = []) {
+      const entries = await readEntries(dir)
+      await asyncForEach(entries, async (entry) => {
+        entry.isFile
+          ? allEntries.push(entry)
+          : await runRecursively(entry, allEntries)
+      })
+      return allEntries
+    }
+    return runRecursively(dir)
+  }
+
+  /*
+      const a = new Audio(url)
+      // currentTime, duration, paused, playbackRate, ended, volume, play, pause, title, dir,
+      // ondurationchange, onplay, onplaying
+      a.addEventListener('loadedmetadata', () => {
+        console.log(a.duration)
+      })
+    })
+  */
+
+  const entryToFile = (entry) =>
+    new Promise((resolve, reject) => entry.file(resolve, reject))
+
+  const entryURL = (entry) =>
+    new Promise((resolve, reject) =>
+      entry.file((f) => resolve(URL.createObjectURL(f)), reject)
+    )
+
+  const entryIsAudio = (entry) => entry.fullPath.match(/\.mp3$/)
+
+  const getDuration = (url) =>
+    new Promise((resolve) => {
+      const audio = new Audio()
+      audio.addEventListener('loadedmetadata', () => {
+        resolve(audio.duration)
+        audio.src = ''
+      })
+      audio.preload = 'metadata'
+      audio.src = url
+    })
+
+  const drop = (e) => {
+    console.time('Load duration')
+
+    Array.from(e.dataTransfer.items).forEach(async (dataTransferItem) => {
+      const entry = dataTransferItem.webkitGetAsEntry()
+      if (!entry.isDirectory) throw new Error('Drop a folder, not a file!')
+      const entries = await getFileEntriesDeep(entry)
+
+      const r = await asyncMap(entries.filter(entryIsAudio), async (entry) => {
+        const { fullPath, name } = entry
+        const url = await entryURL(entry)
+        return { url, fullPath, name, duration: await getDuration(url) }
+      })
+
+      console.log(r)
+      console.timeEnd('Load duration')
+
+      // name, fullPath, url
+    })
+  }
+
+  const dragover = () => {}
+
+  on($box, { dragenter, dragleave, dragover, drop })
+
+  /*
+    - don't go recursive, just files in the dropped folder
+    - order files
+    - calculate time where we left off
+    - run
+  */
+</script>
