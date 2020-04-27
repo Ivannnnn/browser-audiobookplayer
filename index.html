@@ -8,6 +8,12 @@
 
 <div id="box"></div>
 
+<br /><br /><br />
+
+<div id="app"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/preact/10.4.1/preact.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/preact/10.4.1/hooks.umd.js"></script>
 <script>
   const $ = (q) => Array.from(document.querySelectorAll(q))
 
@@ -52,29 +58,6 @@
       dir.createReader().readEntries(resolve, reject)
     )
 
-  const getFileEntriesDeep = (dir) => {
-    async function runRecursively(dir, allEntries = []) {
-      const entries = await readEntries(dir)
-      await asyncForEach(entries, async (entry) => {
-        entry.isFile
-          ? allEntries.push(entry)
-          : await runRecursively(entry, allEntries)
-      })
-      return allEntries
-    }
-    return runRecursively(dir)
-  }
-
-  /*
-      const a = new Audio(url)
-      // currentTime, duration, paused, playbackRate, ended, volume, play, pause, title, dir,
-      // ondurationchange, onplay, onplaying
-      a.addEventListener('loadedmetadata', () => {
-        console.log(a.duration)
-      })
-    })
-  */
-
   const entryToFile = (entry) =>
     new Promise((resolve, reject) => entry.file(resolve, reject))
 
@@ -85,46 +68,38 @@
 
   const entryIsAudio = (entry) => entry.fullPath.match(/\.mp3$/)
 
-  const getDuration = (url) =>
+  const getAudio = (url) =>
     new Promise((resolve) => {
       const audio = new Audio()
-      audio.addEventListener('loadedmetadata', () => {
-        resolve(audio.duration)
-        audio.src = ''
-      })
+      audio.addEventListener('loadedmetadata', () => resolve(audio))
       audio.preload = 'metadata'
       audio.src = url
     })
 
-  const drop = (e) => {
+  const drop = async (e) => {
     console.time('Load duration')
 
-    Array.from(e.dataTransfer.items).forEach(async (dataTransferItem) => {
-      const entry = dataTransferItem.webkitGetAsEntry()
-      if (!entry.isDirectory) throw new Error('Drop a folder, not a file!')
-      const entries = await getFileEntriesDeep(entry)
+    const dataTransferItems = e.dataTransfer.items
 
-      const r = await asyncMap(entries.filter(entryIsAudio), async (entry) => {
-        const { fullPath, name } = entry
-        const url = await entryURL(entry)
-        return { url, fullPath, name, duration: await getDuration(url) }
-      })
+    if (dataTransferItems.length > 1)
+      throw new Error('Please select one folder!')
 
-      console.log(r)
-      console.timeEnd('Load duration')
+    const entry = dataTransferItems[0].webkitGetAsEntry()
+    if (!entry.isDirectory) throw new Error('Drop a folder, not a file!')
+    const entries = await readEntries(entry)
 
-      // name, fullPath, url
+    const r = await asyncMap(entries.filter(entryIsAudio), async (entry) => {
+      const { fullPath, name } = entry
+      const url = await entryURL(entry)
+      return { url, fullPath, name, audio: await getAudio(url) }
     })
+
+    console.log(r)
+    console.timeEnd('Load duration')
   }
 
   const dragover = () => {}
 
   on($box, { dragenter, dragleave, dragover, drop })
-
-  /*
-    - don't go recursive, just files in the dropped folder
-    - order files
-    - calculate time where we left off
-    - run
-  */
 </script>
+<script src="main.js"></script>
